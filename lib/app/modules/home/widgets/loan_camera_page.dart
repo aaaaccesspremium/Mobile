@@ -3,22 +3,74 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+// Tipos de documento requeridos
+enum LoanDocKind { ineFront, ineBack, comprobante }
+
+extension LoanDocKindX on LoanDocKind {
+  String get title {
+    switch (this) {
+      case LoanDocKind.ineFront:
+        return 'INE - Frente';
+      case LoanDocKind.ineBack:
+        return 'INE - Reverso';
+      case LoanDocKind.comprobante:
+        return 'Documento';
+    }
+  }
+
+  String get helper {
+    switch (this) {
+      case LoanDocKind.ineFront:
+        return 'Alinea el frente de tu INE dentro del marco';
+      case LoanDocKind.ineBack:
+        return 'Alinea el reverso de tu INE dentro del marco';
+      case LoanDocKind.comprobante:
+        return 'Alinea el documento dentro del marco';
+    }
+  }
+
+  double get aspectRatio {
+    switch (this) {
+      case LoanDocKind.ineFront:
+      case LoanDocKind.ineBack:
+        return 1.586; // 85.6x54mm
+      case LoanDocKind.comprobante:
+        return 1.414; // √2
+    }
+  }
+}
+
 class LoanCameraPage extends StatefulWidget {
-  const LoanCameraPage({super.key});
+  final LoanDocKind kind;
+  const LoanCameraPage({super.key, required this.kind});
 
   @override
   State<LoanCameraPage> createState() => _LoanCameraPageState();
 }
 
 class _LoanCameraPageState extends State<LoanCameraPage>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   CameraController? _controller;
   Future<void>? _initFuture;
+  late final AnimationController _shutterCtrl;
+  late final Animation<double> _shutterScale;
+  bool _flashVisible = false;
+  bool _torchOn = false;
+
+  bool get _hasTorch => _controller?.description?.hasFlash ?? false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _shutterCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _shutterScale = Tween(begin: 1.0, end: 0.85).animate(
+      CurvedAnimation(parent: _shutterCtrl, curve: Curves.easeOut),
+    );
     _initCamera();
   }
 
@@ -53,8 +105,10 @@ class _LoanCameraPageState extends State<LoanCameraPage>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     _controller?.dispose();
+    _shutterCtrl.dispose();
     super.dispose();
   }
 
@@ -70,7 +124,7 @@ class _LoanCameraPageState extends State<LoanCameraPage>
     }
   }
 
-  Future<void> _takePhoto() async {
+  Future<void> _capturePhoto() async {
     final controller = _controller;
     if (controller == null) return;
 
@@ -79,9 +133,10 @@ class _LoanCameraPageState extends State<LoanCameraPage>
       if (!controller.value.isInitialized || controller.value.isTakingPicture) {
         return;
       }
+      _playShutterFx();
       final XFile file = await controller.takePicture();
       if (!mounted) return;
-      Navigator.pop(context, file); // devolvemos la foto
+      Navigator.pop(context, file);
     } catch (e) {
       debugPrint('Error al tomar foto: $e');
       if (mounted) {
@@ -92,10 +147,31 @@ class _LoanCameraPageState extends State<LoanCameraPage>
     }
   }
 
+  void _playShutterFx() {
+    HapticFeedback.lightImpact();
+    _shutterCtrl.forward(from: 0).then((_) => _shutterCtrl.reverse());
+    setState(() => _flashVisible = true);
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (mounted) setState(() => _flashVisible = false);
+    });
+  }
+
+  Future<void> _toggleTorch() async {
+    final controller = _controller;
+    if (controller == null) return;
+    _torchOn = !_torchOn;
+    try {
+      await controller.setFlashMode(
+          _torchOn ? FlashMode.torch : FlashMode.off);
+      setState(() {});
+    } catch (_) {
+      _torchOn = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
-
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -107,15 +183,19 @@ class _LoanCameraPageState extends State<LoanCameraPage>
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.done &&
                       controller.value.isInitialized) {
-                    return Center(child: CameraPreview(controller));
+                    return CameraPreview(controller);
                   }
                   return const Center(child: CircularProgressIndicator());
                 },
               )
             else
               const Center(child: CircularProgressIndicator()),
-
-            // Cancelar
+            _buildOverlay(),
+            AnimatedOpacity(
+              opacity: _flashVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: Container(color: Colors.white),
+            ),
             Positioned(
               top: 12,
               left: 12,
@@ -126,23 +206,44 @@ class _LoanCameraPageState extends State<LoanCameraPage>
                 onPressed: () => Navigator.pop(context, null),
               ),
             ),
-
-            // Tomar foto
             Positioned(
               bottom: 24,
               left: 0,
               right: 0,
-              child: Center(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                  ),
-                  icon: const Icon(Icons.camera_alt),
-                  label: const Text('Tomar foto'),
-                  onPressed: _takePhoto,
+              child: SizedBox(
+                height: 100,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    ScaleTransition(
+                      scale: _shutterScale,
+                      child: GestureDetector(
+                        onTap: _capturePhoto,
+                        child: Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 4),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (_hasTorch)
+                      Positioned(
+                        right: 32,
+                        child: IconButton(
+                          color: Colors.white,
+                          iconSize: 32,
+                          icon: Icon(
+                            _torchOn
+                                ? Icons.flashlight_on
+                                : Icons.flashlight_off,
+                          ),
+                          onPressed: _toggleTorch,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -151,4 +252,70 @@ class _LoanCameraPageState extends State<LoanCameraPage>
       ),
     );
   }
+
+  Widget _buildOverlay() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final size = constraints.biggest;
+        final ratio = widget.kind.aspectRatio;
+        double width = size.width - 32;
+        double height = width / ratio;
+        if (height > size.height - 120) {
+          height = size.height - 120;
+          width = height * ratio;
+        }
+        final rect = Rect.fromCenter(
+          center: size.center(Offset.zero),
+          width: width,
+          height: height,
+        );
+        return Stack(
+          children: [
+            CustomPaint(size: size, painter: _OverlayPainter(rect)),
+            Positioned.fromRect(
+              rect: rect,
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white, width: 2),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 32,
+              left: 0,
+              right: 0,
+              child: Text(
+                widget.kind.helper,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
+
+class _OverlayPainter extends CustomPainter {
+  final Rect hole;
+  _OverlayPainter(this.hole);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.black45;
+    final overlay = Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+    final cutout = Path()
+      ..addRRect(RRect.fromRectAndRadius(hole, const Radius.circular(16)));
+    canvas.drawPath(Path.combine(PathOperation.difference, overlay, cutout), paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _OverlayPainter oldDelegate) =>
+      oldDelegate.hole != hole;
+}
+
