@@ -1,4 +1,9 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart'; // Para XFile
+import 'loan_camera_page.dart'; // <-- ajusta la ruta si la guardas en otro folder
+import 'package:permission_handler/permission_handler.dart';
 
 class HomeRequestLoanContent extends StatefulWidget {
   final dynamic controller;
@@ -12,6 +17,11 @@ class _HomeRequestLoanContentState extends State<HomeRequestLoanContent> {
   final loanAmountController = TextEditingController();
   String selectedTerm = "6 meses";
 
+  // NUEVO: foto capturada
+  XFile? _loanPhoto;
+  Uint8List? _loanPhotoBytes;
+  String? _loanPhotoB64;
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -22,6 +32,7 @@ class _HomeRequestLoanContentState extends State<HomeRequestLoanContent> {
           Text("Solicitar préstamo",
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
           const SizedBox(height: 16),
+
           // Crédito disponible
           Container(
             decoration: BoxDecoration(
@@ -70,11 +81,10 @@ class _HomeRequestLoanContentState extends State<HomeRequestLoanContent> {
               TextField(
                 controller: loanAmountController,
                 keyboardType: TextInputType.number,
+                autofillHints: const [], // ← desactiva autofill para este campo
                 decoration: InputDecoration(
-                  contentPadding:
-                      const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   hintText: "0.00",
                 ),
               ),
@@ -112,9 +122,8 @@ class _HomeRequestLoanContentState extends State<HomeRequestLoanContent> {
               color: Colors.white,
               border: Border.all(color: Colors.grey.shade200),
               borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))
               ],
             ),
             padding: const EdgeInsets.all(12),
@@ -123,8 +132,7 @@ class _HomeRequestLoanContentState extends State<HomeRequestLoanContent> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text("Resumen del préstamo",
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Theme.of(context).colorScheme.onSurface)),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Theme.of(context).colorScheme.onSurface)),
                 const SizedBox(height: 8),
                 _summaryRow("Monto solicitado", "\$10,000.00"),
                 _summaryRow("Tasa de interés", "12.5%"),
@@ -138,12 +146,53 @@ class _HomeRequestLoanContentState extends State<HomeRequestLoanContent> {
                     Text("\$1,791.67",
                         style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
                   ],
-                )
+                ),
+
+                // NUEVO: miniatura si hay foto
+                if (_loanPhotoBytes != null) ...[
+                  const SizedBox(height: 12),
+                  Text("Documento capturado",
+                      style: TextStyle(fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.memory(
+                          _loanPhotoBytes!,
+                          width: 96,
+                          height: 96,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _loanPhoto?.name ?? 'imagen.jpg',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Quitar',
+                        onPressed: () {
+                          setState(() {
+                            _loanPhoto = null;
+                            _loanPhotoBytes = null;
+                            _loanPhotoB64 = null;
+                          });
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
 
-          // Botón
+          // Botón -> abre cámara
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -153,9 +202,7 @@ class _HomeRequestLoanContentState extends State<HomeRequestLoanContent> {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),
-              onPressed: () {
-                // Acción solicitar préstamo
-              },
+              onPressed: _onRequestLoanPressed,
               child: Text("Solicitar préstamo",
                   style: TextStyle(fontWeight: FontWeight.w500, color: Theme.of(context).colorScheme.primaryContainer)),
             ),
@@ -163,6 +210,32 @@ class _HomeRequestLoanContentState extends State<HomeRequestLoanContent> {
         ],
       ),
     );
+  }
+
+  Future<void> _onRequestLoanPressed() async {
+    final status = await Permission.camera.request();
+    if (!status.isGranted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Se requiere permiso de cámara')),
+        );
+      }
+      return;
+    }
+
+    final photo = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LoanCameraPage()),
+    );
+
+    if (!mounted || photo == null) return;
+
+    final bytes = await photo.readAsBytes();
+    setState(() {
+      _loanPhoto = photo;
+      _loanPhotoBytes = bytes;
+      _loanPhotoB64 = base64Encode(bytes);
+    });
   }
 
   Widget _summaryRow(String label, String value) {
