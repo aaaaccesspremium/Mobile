@@ -1,0 +1,120 @@
+# =========================
+# Flutter / Dart / Pub
+# =========================
+.dart_tool/
+.packages
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.melos_tool/
+coverage/
+# Mantén pubspec.lock en APPS (se recomienda); ignóralo solo si publicas un PACKAGE.
+# pubspec.lock
+
+# =========================
+# Sistemas / temporales
+# =========================
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# =========================
+# Configuración / secretos
+# =========================
+*.env
+.env.*
+**/google-services.json
+**/GoogleService-Info.plist
+**/firebase_app_id_file.json
+**/Crashlytics-build.properties
+
+# =========================
+# Android
+# =========================
+android/.gradle/
+android/.idea/
+android/**/build/
+android/local.properties
+android/key.properties
+android/**/captures/
+android/**/*.iml
+android/app/*.keystore
+android/app/*.jks
+# (opcional) si generaste un debug.keystore dentro del proyecto
+android/app/debug.keystore
+
+# =========================
+# iOS
+# =========================
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/App.framework
+ios/Flutter/Generated.xcconfig
+ios/Flutter/ephemeral/
+ios/ServiceDefinitions.json
+ios/Runner/GeneratedPluginRegistrant.*
+ios/build/
+# Xcode user data
+ios/**/xcuserdata/
+ios/**/DerivedData/
+*.xcuserstate
+
+# =========================
+# macOS
+# =========================
+macos/Pods/
+macos/.symlinks/
+macos/Flutter/ephemeral/
+macos/build/
+macos/**/xcuserdata/
+macos/**/DerivedData/
+
+# =========================
+# Web
+# =========================
+web/.dart_tool/
+web/build/
+
+# =========================
+# Windows
+# =========================
+windows/flutter/ephemeral/
+windows/**/GeneratedPluginRegistrant.*
+windows/**/x64/
+windows/**/x86/
+windows/**/build/
+
+# =========================
+# Linux
+# =========================
+linux/flutter/ephemeral/
+linux/**/GeneratedPluginRegistrant.*
+linux/**/build/
+
+# =========================
+# VS Code / IDEs
+# =========================
+.vscode/
+.idea/
+*.iml
+
+# =========================
+# Fastlane (opcional)
+# =========================
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+# =========================
+# Otros (opcional)
+# =========================
+*.bak
+*.orig
